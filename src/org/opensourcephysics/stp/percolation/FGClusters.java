@@ -18,9 +18,13 @@ public class FGClusters {
   public int L;                                       // X-axis dimension of lattice, no. of columns
   public int M;                                       // Y-axis dimension of lattice, no. of rows
   public int N;                                       // N = L*M, L is num. of lines, M is num. of rows
+  public double dt;
   public int numSitesOccupied;                        // number of occupied lattice sites
   public int[] numClusters;                           // number of clusters of size s, n_s
   public int numOpenGBs;                              // number of open grain boundaries at specific P
+  public double accumulatedFGR;						  // amount of fission gas released, unit: mols
+  private FGR grainBoundaries[];                       // 
+  private double[] Ni;                                // 
   // secondClusterMoment stores sum{s^2 n_s}, where sum is over all clusters (not counting spanning cluster)
   // first cluster moment, sum{s n_s} equals  numSitesOccupied.
   // mean cluster size S is defined as S = secondClusterMoment/numSitesOccupied
@@ -47,62 +51,90 @@ public class FGClusters {
   // at roots. For example, if root of a cluster is at site 7 and this cluster
   // touches the left side, then touchesLeft[7] == true.
 
-  private boolean[] touchesLeft, touchesRght,touchesDown;
+  private boolean[] touchesRght,touchesDown;
 
-  public FGClusters(int L, int M) {
+  public FGClusters(int L, int M, double dt) {
     this.L = L;
     this.M = M;
+    this.dt = dt;
     N = L*M;
     numClusters = new int[N+1];
     gbState = new int[N];
     parent = new int[N];
-    touchesLeft = new boolean[N];
+    Ni =new double [N];
     touchesRght = new boolean[N];
     touchesDown = new boolean[N];
+    grainBoundaries = new FGR[N];
   }
 
   public void newLattice() {
     //setOccupationOrder(); // choose order in which sites are occupied
     // initially all sites are empty, and there are no clusters
     numSitesOccupied = secondClusterMoment = spanningClusterSize = 0;
+    accumulatedFGR = 0.0;
     for(int s = 0;s<N;s++) {
       numClusters[s] = 0;
       parent[s] = EMPTY;
       gbState[s] = 0;
+      Ni[s] = 0.0;
+      //initialize FGR[s] according to grainboudaries properties
+      int xGB = s%L;
+      int xGB_max = L;
+      grainBoundaries[s] = new FGR(dt, xGB, xGB_max, Ni[s]);
     }
     // initially left boundary touchesLeft, right boundary touchesRight
     for(int s = 0;s<N;s++) {
-      touchesLeft[s] = (s%L==0);
+      //touchesLeft[s] = (s%L==0);
       touchesRght[s] = (s%L==L-1);
       touchesDown[s] = (s/L==0);//modified
     }
   }
 
-  // adds site to lattice and updates clusters.
-  public void addRandomSite() {
- /*   // if all sites are occupied, we can't add anymore
+  // update site state according to FGR diffusion model
+  public void updateSite() {
+	  for(int s = 0;s<N;s++) {
+		  gbState[s] = grainBoundaries[s].fgrCalculate(Ni[s]);
+		  // if site s is newly saturated	  
+		  if(gbState[s]==1) {
+			  // store new cluster's size in parent[]; negative sign distinguishes
+			  // newSite as a root, with a size value. Positive values correspond
+			  // to non-root sites with index pointers.
+			  parent[s] = -1;
+			  numClusters[1]++;
+			  numSitesOccupied++;
+			  secondClusterMoment++;
+			  // merge newSite with occupied neighbors.  root is index of merged cluster root at each step
+			  int root = s;
+			  for(int j = 0;j<4;j++) {
+			      // neighborSite is jth site neighboring newly added site newSite
+			      int neighborSite = getNeighbor(s, j);
+			      if((neighborSite!=EMPTY)&&(parent[neighborSite]!=EMPTY)) {
+			        root = mergeRoots(root, findRoot(neighborSite));
+			        //if neighboring site is vented to right or down side, so is the newly added site newSite
+			        touchesRght[s]=touchesRght[neighborSite];
+			        touchesDown[s]=touchesDown[neighborSite];
+			      }
+			  }
+		  }
+		  Ni[s] = grainBoundaries[s].Nt;//update Ni[s] for next step 
+	  }
+	  // assign site venting status according to touchesRght and touchesDown
+	  for(int s = 0;s<N;s++) {
+		  if (touchesRght[s]==true||touchesDown[s]==true) {
+			  gbState[s] = grainBoundaries[s].GBstate = 2;// vented
+			  accumulatedFGR += grainBoundaries[s].C_fgr; 
+			  Ni[s] =  0.0; // update Ni[s] for next step
+			  grainBoundaries[s].venting();
+		  }
+		  else
+			  grainBoundaries[s].Ni = Ni[s]; // update Ni[s] for next step
+	  }
+  }  
+	  /*   // if all sites are occupied, we can't add anymore
     if(numSitesOccupied==N) {
       return;
     }
-    // newSite is index of random site to be occupied
-    // numSiteOccupied increased by 1 every time
-    // int newSite = order[numSitesOccupied++];
-    // creates a new cluster containing only site newSite.
-    numClusters[1]++;
-    secondClusterMoment++;
-    // store new cluster's size in parent[]; negative sign distinguishes
-    // newSite as a root, with a size value. Positive values correspond
-    // to non-root sites with index pointers.
-    parent[newSite] = -1;
-    // merge newSite with occupied neighbors.  root is index of merged cluster root at each step
-    int root = newSite;
-    for(int j = 0;j<4;j++) {
-      // neighborSite is jth site neighboring newly added site newSite
-      int neighborSite = getNeighbor(newSite, j);
-      if((neighborSite!=EMPTY)&&(parent[neighborSite]!=EMPTY)) {
-        root = mergeRoots(root, findRoot(neighborSite));
-      }
-   } */
+
   }
 /*
   public int getOpenGBs() {
@@ -207,7 +239,7 @@ public class FGClusters {
       return r1;
       // if r1 has smaller cluster size than r2, reverse (r1,r2) labels
     } else if(-parent[r1]<-parent[r2]) {
-      return mergeRoots(r2, r1);//swich the order so that the first cluster is always bigger than the second
+      return mergeRoots(r2, r1);//switch the order so that the first cluster is always bigger than the second
     } else { // (-parent[r1] > -parent[r2])
       // update cluster count, and second cluster moment to account for
       // loss of two small clusters and gain of one bigger cluster

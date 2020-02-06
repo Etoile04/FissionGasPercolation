@@ -13,21 +13,22 @@ public class FGR {
 	int yGB;       // y position of the calculated grain boundary in the bond network
 	int xGB_max;   // maximum number of the bond network in x axis
 	// why is there no yGB_max?because T is dependent on X position but not Y position
-	int GBstate = 0; // the calculated grain boundary state index- 0, closed;1, satured; 2,vented; 
+	int GBstate; // the calculated grain boundary state index- 0, closed;1, satured; 2,vented;
+	double local_t;
 	double T;      // local temperature of the calculated grain boundary
 	//double beta_g; // local gas production rate, unit: atoms/m^3/s
 	//double Dg;     // gas atom diffusion coefficient, unit: m^2/s
 	//double Nt;     // the number of gas atoms per grain boundary area at time t, unit: atoms/m^2
 	//double Nsat;   // the saturation density of grain boundary, unit: atoms/m^2
 	double bgb = 1.0e-5;    // the resolution rate, unit: 1/s
-	double theta = 50; // bubble’s contact angle, unit: degree
+	double theta; // bubble’s contact angle, unit: degree
 	double a = 1.0e-5; // the radius of grain, unit: m
 	double rb = 5e-7;  // the radius of curvature of the grain boundary bubble, unit: m
 	double Xgb_c = 0.5; //threshold fraction of grain boundary gas bubble coverage
 	double Pext = 0.0;  // external applied hydro-static pressure, unit: Pa
 	double gamma = 0.5; // the bubble surface energy, unit: J/m^2
 	double delta = 1.0e-8; //the resolution depth, unit: m
-	double delta_t = 1000; // time step, unit:second
+	double dt = 1000; // time step, unit:second
 	double Ni, Nt; //the previous and current values of Nt
 	double C_fgr=0.0;// the amount of fission gas released after saturation,unit:mol
 	final double Navgd=6.022e23;//Avogadro constant
@@ -59,124 +60,96 @@ public class FGR {
 	}
 //
 	public double f_theta (double theta){
-		double theta_r = Math.toRadians(theta); // unit conversion from degree to radians
-		double f_theta = 1 - 1.5* Math.cos(theta_r) + 0.5* Math.pow(Math.cos(theta_r), 3); 
+		//double theta_r = Math.toRadians(theta); // unit conversion from degree to radians
+		double f_theta = 1 - 1.5* Math.cos(theta) + 0.5* Math.pow(Math.cos(theta), 3); 
 		return f_theta;
 	}
 	public double Nsat (double T){
-		double theta_r = Math.toRadians(theta); // unit conversion from degree to radians
+		//double theta_r = Math.toRadians(theta); // unit conversion from degree to radians
 		//double f_theta = 1 - 1.5* Math.cos(theta_r) + 0.5* Math.pow(Math.cos(theta_r), 3); 
-		double Nsat = 4*rb*f_theta(theta)/3/kB/T/Math.sin(theta_r)/Math.sin(theta_r)*Xgb_c*(2*gamma/rb+Pext); // Eq.(9) in Ref.1,
+		double Nsat = 4*rb*f_theta(theta)/3/kB/T/Math.sin(theta)/Math.sin(theta)*Xgb_c*(2*gamma/rb+Pext); // Eq.(9) in Ref.1,
 		return Nsat;
 	}
 //
 	public double f0(double T,double t) {
+		//t is time in previous step,s
 		double f0;
-		double omega=Dg(T)*t/a/a;
+		double beta_g = beta_g(T);
+		double Dg=Dg(T);
+		double omega=Dg*t/a/a;
 		double pi_2=1/Math.PI/Math.PI;
 		if (omega>pi_2)
-			f0= beta_g(T)*a/3*(1-0.608*Math.exp(-Math.PI*Math.PI*Dg(T)*t/a/a));//Eq.(7) in Ref.1, long times;
+			f0= beta_g*a/3*(1-0.608*Math.exp(-Math.PI*Math.PI*Dg*t/a/a));//Eq.(7) in Ref.1, long times;
 		else
-			f0 = beta_g(T)*a/3*(6/a*Math.sqrt(Dg(T)*t/Math.PI))-3*Dg(T)*t/a/a;//Eq.(6) in Ref.1, short times;
+			f0 = beta_g*a/3*(6/a*Math.sqrt(Dg*t/Math.PI))-3*Dg*t/a/a;//Eq.(6) in Ref.1, short times;
 		return f0;
 	}
 //
 	public double dNdt (double T,double t){
 		//double Agb = 4.0* Math.PI *a*a;//the area of the grain boundary of a particular grain, unit: m^2
-		//t is time,s
+		//t is time in previous step,s
 		//T is temperature, K
 		//double f0;//The Booth flux
-		//double t1=t+delta_t;
+		//double t1=t+dt;
 		double JFlux;
 		if(t>0)
 			JFlux= 2*f0(T, t)*(1-bgb*delta*Ni/2/Dg(T)/beta_g(T)/t);//Eq.(8) in Ref.1 solved with the Euler scheme;
 		else
-			JFlux= 2*f0(T, t+delta_t);
+			JFlux= 2*f0(T, t+dt);
 		return JFlux;
 	}
 //
-	public double Nt (double T, double t){
-		//t is time,s
+	public double Nt (double T, double Ni){
+		//t is time in previous step,s
 		//T is temperature, K
 		//Ni is the Nt in previous step
 		//double f0;//The Booth flux
 		double Np,Nc, Nt;// predicted, corrected values of Nt in improved Euler's scheme
-		double t1=t+delta_t;
-		if(t>0) {
-			Np = 2*delta_t*f0(T, t) + (1-bgb*delta*f0(T, t)*delta_t/Dg(T)/beta_g(T)/t)*Ni;
-			Nc = 2*delta_t*f0(T, t1) + Ni-bgb*delta*f0(T, t1)*delta_t/Dg(T)/beta_g(T)/t1*Np;
+		double t1=local_t+dt;
+		double beta_g = beta_g(T);
+		double Dg=Dg(T);
+		if(local_t>0) {
+			Np = 2*dt*f0(T, local_t) + (1-bgb*delta*f0(T, local_t)*dt/Dg/beta_g/local_t)*Ni;
+			Nc = 2*dt*f0(T, t1) + Ni-bgb*delta*f0(T, t1)*dt/Dg/beta_g/t1*Np;
 			Nt=0.5*Np+0.5*Nc;
 				}
-		else {
-			Nt = 2*delta_t*f0(T, t);	
-			}
+		else 
+			Nt = 2*dt*f0(T, local_t);	
+		//when Nt exceeds Nsat for the first time, GB state is set to 1, and GB is overpressurized.	
 		if(Nt>Nsat(T)) {
-			//when Nt exceeds Nsat for the first time, GB state is set to 1, and GB is overpressurized. 
-			//Nt=Nsat(T);//test 
+ 			//Nt=Nsat(T);//test 
 			GBstate=1;
-		}
-		//if the grain boundary is vented in previous 
-		if(GBstate==2) {
-			C_fgr+=Nt*Math.PI*a*a/Navgd;//gas released amount is accumulated, unit:mol
-			//Ni=0.0;// gas density is reset to zero after venting
-			Nt=0.0;// gas density is reset to zero after venting
-			GBstate=0;//grain boundary state is reset to 'closed'
 		}
 		return Nt;
 	}
-//	
-	public void fgrCalculate(){
-		double Ngas[]=new double[200];
-		Ni=0;
-		double T= this.T(xGB, xGB_max);
-		double t=0;
-		double deltaN;
-		int stepNo=120;
-		Ngas[0]=0.0;
-		int j;
-		//plot setting
-		PlotFrame frame= new PlotFrame("time(s)","Number density at Grain Boudnary","FGR test");
-		frame.setConnected(1, true);
-		frame.setMarkerShape(1, Dataset.NO_MARKER);
-		//
-		for(int i=0;i<=stepNo;i++) {
-			j=i+1;
-			//Ngas[j]= Ngas[i];
-			deltaN = dNdt(T,t)*delta_t;
-			t=t+delta_t;
-			Ngas[j]= Nt(T,t);
-			Ni=Ngas[j];
-			frame.append(0, t, Ni);
-			frame.append(1, t, Nsat(T));
-			//System.out.println(j);
-			//System.out.println(Ni);
-			//System.out.println(deltaN);
-			//System.out.println(Nsat(T));
-		}
-		frame.setVisible(true);
-		frame.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
-		frame.setXPointsLinked(true);
-		frame.setXYColumnNames(0, "time(s)", "N_boundary");
-		frame.setXYColumnNames(1, "time(s)", "Nsat");
-		frame.setRowNumberVisible(true);
+//
+	public void venting() {
+		C_fgr+=Nt*Math.PI*a*a/Navgd;//gas released amount is accumulated, unit:mol
+		Nt = 0.0;// gas density is reset to zero after venting
+		GBstate = 0;//grain boundary state is reset to 'closed'
+		local_t = 0.0;// reset the local time following venting
 	}
-    /*
-	public static void main(String args[]) {
-		FGR grain = new FGR();
-	    grain.xGB = 100;
-	    grain.xGB_max = 800;
-	    //int xGB = grain.xGB;
-	    //int xGB_max=grain.xGB_max;
-	    //double T = grain.T(xGB, xGB_max);
-	    //double beta_g =beta_g(T);
-	    //double Dg = Dg(T);
-	    //double Nsat= Nsat(T);
-	    //System.out.println(T);
-	    //System.out.println(grain.beta_g(T));
-	    //System.out.println(grain.Dg(T));
-	    //System.out.println(grain.Nsat(T));
-	    grain.delta_t = 500000;
-	    grain.fgrCalculate();
-	  }
-	  */
+	public FGR(double dt,int xGB,int xGB_max,double Ni ){
+		this.dt = dt;
+		this.xGB = xGB_max;
+	    this.xGB_max = xGB_max;
+	    this.Ni = Ni;   //Grain boudaries gas density at previous time step
+	    this.theta = Math.toRadians(60+Math.random()*20);//bubble contact angle that is randomly chosen between 40° and 80°
+	    T = this.T(xGB, xGB_max);
+	    this.GBstate = 0;
+	    this.local_t = 0.0;
+	}
+//	
+	public int fgrCalculate(double Ni){
+		this.Ni = Ni;   //Grain boudaries gas density at previous time step		
+//		double deltaN;
+//			deltaN = dNdt(T,t)*dt;
+			local_t+=dt;
+			this.Nt = Nt(T,Ni);// use the local time, which restarts following venting
+
+		if(this.Nt>=Nsat(T)) 
+			return 1;
+		else
+			return 0; 
+	}
 }

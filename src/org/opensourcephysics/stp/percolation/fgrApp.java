@@ -10,45 +10,55 @@ public class fgrApp extends AbstractSimulation {
 	  Scalar2DFrame grid = new Scalar2DFrame("FGR percolation algorithm");
 	  FGClusters lattice;
 	  double tDisplay,t1,t2,dt;
-	  double t=0.0; // current time
+	  double t; // current time
 	  public void initialize() {
 		    int L = control.getInt("Lattice X-axis size L");
 		    int M = control.getInt("Lattice Y-axis size M");
+		    tDisplay = 86400*control.getDouble("Display lattice at this time, days");// convert time from days to seconds
+		    t1 = 86400*control.getDouble("Beginning time for plots, days");// convert time from days to seconds
+		    t2 = 86400*control.getDouble("Ending time for plots, days");// convert time from days to seconds
+		    dt = 86400*control.getDouble("dt for plots, days");// convert time from days to seconds
+		    t=0.0;
 		    grid.resizeGrid(L, M);
-		    lattice = new FGClusters(L, M);
-		    tDisplay = control.getDouble("Display lattice at this time");
-		    t1 = control.getDouble("Beginning time for plots");
-		    t2 = control.getDouble("Ending time for plots");
-		    dt = control.getDouble("dt for plots");
+		    lattice = new FGClusters(L, M, dt);
 		    // adds sites to new cluster
 		    lattice.newLattice();
+		    lattice.dt= dt;
 		    displayLattice();//paint the lattice
 	  }
 	  
 	  public void doStep() {
 		    control.clearMessages();
 		    t+=dt;
-		    control.println("Trial "+t);
-		    grid.setMessage("t = "+tDisplay);
+		    double tDays = t/86400;
+		    control.println("Current Time(days)="+tDays);
+		    grid.setMessage("t = "+tDays);
+	        lattice.updateSite();
+		    //for(int i = 0;i<lattice.N;i++) {
+
+		        //meanClusterSize[i] += lattice.getMeanClusterSize();
+		        //P_infinity[i] += (double) lattice.getSpanningClusterSize()/lattice.numSitesOccupied;
+		        //P_span[i] += (lattice.getSpanningClusterSize()==0 ? 0 : 1);
+		    //  }
 		    displayLattice();//paint the lattice
 	  }
 	  
 	  private void displayLattice() {
 		    double display[] = new double[lattice.N];//color value of each site
 		    for(int s = 0;s<lattice.N;s++) {
-		      //display[s] = lattice.getClusterSize(s);
-		      display[s] = s;// for test
+		      display[s] = lattice.getClusterSize(s);
+		      //display[s] = s;// for test
 		    }
 		    grid.setAll(display);
 		  }
 	  
 	  public void reset() {
-		  control.setValue("Lattice X-axis size L", 128);
-		   control.setValue("Lattice Y-axis size M", 128);
-		   control.setValue("Beginning time for plots", 0.0);
-		   control.setValue("Ending time for plots", 100000);
-		   control.setValue("dt for plots", 1000);
-		   control.setValue("Display lattice at this time", 50000);
+		  control.setValue("Lattice X-axis size L", 10);
+		   control.setValue("Lattice Y-axis size M", 10);
+		   control.setValue("Beginning time for plots, days", 0.0);
+		   control.setValue("Ending time for plots, days", 1000);
+		   control.setValue("dt for plots, days", 10);//1e6 s = 11.57 days
+		   control.setValue("Display lattice at this time, days", 500);
 	  }
 	  
 	public static void main(String args[]) {
