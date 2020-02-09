@@ -1,6 +1,6 @@
 package org.opensourcephysics.stp.percolation;
-import org.opensourcephysics.frames.PlotFrame;
-import org.opensourcephysics.display.Dataset;
+//import org.opensourcephysics.frames.PlotFrame;
+//import org.opensourcephysics.display.Dataset;
 //import javax.swing.JFrame.*;
 
 public class FGR {
@@ -13,7 +13,7 @@ public class FGR {
 	int yGB;       // y position of the calculated grain boundary in the bond network
 	int xGB_max;   // maximum number of the bond network in x axis
 	// why is there no yGB_max?because T is dependent on X position but not Y position
-	int GBstate; // the calculated grain boundary state index- 0, closed;1, satured; 2,vented;
+	int GBstate; // the calculated grain boundary state index- 0, closed;1, satured; 2,overpressurized;
 	double local_t;
 	double T;      // local temperature of the calculated grain boundary
 	//double beta_g; // local gas production rate, unit: atoms/m^3/s
@@ -118,7 +118,7 @@ public class FGR {
 		//when Nt exceeds Nsat for the first time, GB state is set to 1, and GB is overpressurized.	
 		if(Nt>Nsat(T)) {
  			//Nt=Nsat(T);//test 
-			GBstate=1;
+			GBstate = 1;
 		}
 		return Nt;
 	}
@@ -146,7 +146,6 @@ public class FGR {
 //			deltaN = dNdt(T,t)*dt;
 			local_t+=dt;
 			this.Nt = Nt(T,Ni);// use the local time, which restarts following venting
-
 		if(this.Nt>=Nsat(T)) 
 			return 1;
 		else

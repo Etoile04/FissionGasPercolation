@@ -8,6 +8,7 @@ public class fgrApp extends AbstractSimulation {
 	 * Ref.1  P.C. Millett et al. /Journal of Nuclear Materials 424 (2012) 176–182
 	 */
 	  Scalar2DFrame grid = new Scalar2DFrame("FGR percolation algorithm");
+	  Scalar2DFrame grid2 = new Scalar2DFrame("GB status");
 	  FGClusters lattice;
 	  double tDisplay,t1,t2,dt;
 	  double t; // current time
@@ -20,6 +21,7 @@ public class fgrApp extends AbstractSimulation {
 		    dt = 86400*control.getDouble("dt for plots, days");// convert time from days to seconds
 		    t=0.0;
 		    grid.resizeGrid(L, M);
+		    grid2.resizeGrid(L, M);
 		    lattice = new FGClusters(L, M, dt);
 		    // adds sites to new cluster
 		    lattice.newLattice();
@@ -33,6 +35,7 @@ public class fgrApp extends AbstractSimulation {
 		    double tDays = t/86400;
 		    control.println("Current Time(days)="+tDays);
 		    grid.setMessage("t = "+tDays);
+		    grid2.setMessage("t = "+tDays);
 	        lattice.updateSite();
 		    //for(int i = 0;i<lattice.N;i++) {
 
@@ -50,6 +53,11 @@ public class fgrApp extends AbstractSimulation {
 		      //display[s] = s;// for test
 		    }
 		    grid.setAll(display);
+		    for(int s = 0;s<lattice.N;s++) {
+			      display[s] = lattice.gbState[s];
+			      //display[s] = s;// for test
+			    }
+			grid2.setAll(display);
 		  }
 	  
 	  public void reset() {

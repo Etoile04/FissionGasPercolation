@@ -130,7 +130,7 @@ public class fgrTest {
 		Ni=0;
 		double T= this.T(xGB, xGB_max);
 		double t=0;
-		double deltaN;
+		//double deltaN;
 		int stepNo=120;
 		Ngas[0]=0.0;
 		int j;
@@ -142,7 +142,7 @@ public class fgrTest {
 		for(int i=0;i<=stepNo;i++) {
 			j=i+1;
 			//Ngas[j]= Ngas[i];
-			deltaN = dNdt(T,t)*delta_t;
+			//deltaN = dNdt(T,t)*delta_t;
 			t=t+delta_t;
 			Ngas[j]= Nt(T,t);
 			Ni=Ngas[j];

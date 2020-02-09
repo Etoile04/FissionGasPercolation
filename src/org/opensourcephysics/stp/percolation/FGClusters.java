@@ -25,6 +25,8 @@ public class FGClusters {
   public double accumulatedFGR;						  // amount of fission gas released, unit: mols
   private FGR grainBoundaries[];                       // 
   private double[] Ni;                                // 
+  private int[] surfaceSites;
+  private int numSurfaceSites;
   // secondClusterMoment stores sum{s^2 n_s}, where sum is over all clusters (not counting spanning cluster)
   // first cluster moment, sum{s n_s} equals  numSitesOccupied.
   // mean cluster size S is defined as S = secondClusterMoment/numSitesOccupied
@@ -35,7 +37,7 @@ public class FGClusters {
   private int spanningClusterSize;
   // gbState[n] gives index of nth site. - 0, closed;1, saturated; 2,vented
 
-  private int[] gbState;
+  public int[] gbState;
   // parent[] array serves three purposes: stores cluster size when site
   // is root. Otherwise, it stores index of the site's "parent" or is
   // EMPTY. The root is found from an occupied site by recursively following the
@@ -65,6 +67,11 @@ public class FGClusters {
     touchesRght = new boolean[N];
     touchesDown = new boolean[N];
     grainBoundaries = new FGR[N];
+    for(int s = 0;s<N;s++) {
+        if(s%L==L-1||s/L==M-1)
+               	numSurfaceSites++;
+    }
+    surfaceSites = new int[numSurfaceSites];
   }
 
   public void newLattice() {
@@ -86,7 +93,15 @@ public class FGClusters {
     for(int s = 0;s<N;s++) {
       //touchesLeft[s] = (s%L==0);
       touchesRght[s] = (s%L==L-1);
-      touchesDown[s] = (s/L==0);//modified
+      touchesDown[s] = (s/L==M-1);//
+    }
+    int i=0;
+    for(int s = 0;s<N;s++) {
+        if(s%L==L-1||s/L==M-1)
+        	{
+        	surfaceSites[i]=s;//stores the sites of right and down surface
+        	i++;
+        	}
     }
   }
 
@@ -99,63 +114,103 @@ public class FGClusters {
 			  // store new cluster's size in parent[]; negative sign distinguishes
 			  // newSite as a root, with a size value. Positive values correspond
 			  // to non-root sites with index pointers.
-			  parent[s] = -1;
-			  numClusters[1]++;
-			  numSitesOccupied++;
-			  secondClusterMoment++;
-			  // merge newSite with occupied neighbors.  root is index of merged cluster root at each step
+			  if(parent[s] ==EMPTY) {//to avoid duplicate the counting of existing saturated sites
+				  parent[s] = -1;
+				  numClusters[1]++;
+				  numSitesOccupied++;
+				  secondClusterMoment++;  
+			 // merge newSite with occupied neighbors.  root is index of merged cluster root at each step
 			  int root = s;
 			  for(int j = 0;j<4;j++) {
 			      // neighborSite is jth site neighboring newly added site newSite
 			      int neighborSite = getNeighbor(s, j);
 			      if((neighborSite!=EMPTY)&&(parent[neighborSite]!=EMPTY)) {
 			        root = mergeRoots(root, findRoot(neighborSite));
-			        //if neighboring site is vented to right or down side, so is the newly added site newSite
+			        //if neighboring site is vented to right or down surface, so is the newly added site
 			        touchesRght[s]=touchesRght[neighborSite];
 			        touchesDown[s]=touchesDown[neighborSite];
 			      }
 			  }
 		  }
+	  }
 		  Ni[s] = grainBoundaries[s].Nt;//update Ni[s] for next step 
 	  }
-	  // assign site venting status according to touchesRght and touchesDown
-	  for(int s = 0;s<N;s++) {
-		  if (touchesRght[s]==true||touchesDown[s]==true) {
-			  gbState[s] = grainBoundaries[s].GBstate = 2;// vented
-			  accumulatedFGR += grainBoundaries[s].C_fgr; 
-			  Ni[s] =  0.0; // update Ni[s] for next step
-			  grainBoundaries[s].venting();
+	  
+	  
+	  // search venting cluster from the surface
+	  for(int i=0;i<numSurfaceSites;i++) {
+	  //for(int s = N-L;s<N;s++) {
+		  int s=surfaceSites[i];
+		  if(parent[s]!=EMPTY) {//if the surface site is saturated
+			  int root = parent[s];//the root site of the venting cluster  
+			  if(root>0) {// Case1: the root site of the venting cluster is not on the edge
+					  int clusterSize = -parent[root]; // the size of the venting cluster
+					  numClusters[clusterSize]--;
+					  //reset the root 
+					  accumulatedFGR += grainBoundaries[root].C_fgr; 
+					  Ni[root] =  0.0; // update Ni[s] for next step
+					  grainBoundaries[root].venting();
+					  parent[root]=EMPTY;//
+					  gbState[root] = 0;// GBstate reset to 0 due to venting
+					  clusterSize--;
+					  //reset other sites in the cluster
+					  while (clusterSize>0) {
+						  for(int j = 0;j<N;j++) {//search sites within the cluster, which have same root 
+							  	if(parent[j]==root){
+							  		accumulatedFGR += grainBoundaries[j].C_fgr; 
+									Ni[j] =  0.0; // update Ni[s] for next step
+									grainBoundaries[j].venting();
+									parent[j]=EMPTY;//
+									gbState[j] = 0;// GBstate reset to 0 due to venting
+							  		touchesRght[j] = false;
+							  		touchesDown[j] = false;
+							  		clusterSize--;
+							  		}
+						  		}
+					  	}
+					  //parent[s]=-1;// the surface remains vented
+				  }
+				  else if (root<-1){// Case2:  site s is the root, and the cluster is bigger than 1 
+					  int clusterSize = -parent[s];
+					  numClusters[clusterSize]--;
+					  // to be tested
+					  //reset the root 
+					  accumulatedFGR += grainBoundaries[s].C_fgr; 
+					  Ni[s] =  0.0; // update Ni[s] for next step
+					  grainBoundaries[s].venting();
+					  parent[s]=-1;//test
+					  numClusters[1]++;//test
+					  gbState[s] = 1;// GBstate reset to 0 due to venting
+					  clusterSize--;
+					  while (clusterSize>0) {// to be tested 
+						  for(int j = 0;j<N;j++) { 
+							  	if(parent[j]==s){
+							  		accumulatedFGR += grainBoundaries[j].C_fgr; 
+									Ni[j] =  0.0; // update Ni[s] for next step
+									grainBoundaries[j].venting();
+									parent[j]=EMPTY;//
+									gbState[j] = 0;// GBstate reset to 0 due to venting
+							  		touchesRght[j] = false;
+							  		touchesDown[j] = false;
+							  		clusterSize--;
+							  		}
+						  		}
+					  	}
+					  //parent[s]=-1;// the surface remains vented
+					  }
+				  else// Case3:  only the root site at the down surface is saturated 
+				  {
+					  accumulatedFGR += grainBoundaries[s].C_fgr; 
+					  Ni[s] =  0.0; // update Ni[s] for next step
+					  gbState[s] = 1;// GBstate remains vented
+				  }
+			  parent[s]=-1;//test
+			  numClusters[1]++;//test
+			  touchesRght[s] = (s%L==L-1);//
+		      touchesDown[s] = (s/L==M-1);//  
+			  	  }
 		  }
-		  else
-			  grainBoundaries[s].Ni = Ni[s]; // update Ni[s] for next step
-	  }
-  }  
-	  /*   // if all sites are occupied, we can't add anymore
-    if(numSitesOccupied==N) {
-      return;
-    }
-
   }
-/*
-  public int getOpenGBs() {
-	// sum open GBs
-	  int j=0;
-	  numOpenGBs = 0;
-	  int k=0;
-	  while(j<N) {
-		  if (touchesRght[j]==true||touchesDown[j]==true) {
-			  k=findRoot(j);
-			  numOpenGBs-= parent[k];
-			  j=j-parent[k];
-		  }
-		  else {
-			  j++;
-		  }
-	  }
-	return numOpenGBs;
-}
-*/
-
 // gets size of  cluster to which site s belongs.
   public int getClusterSize(int s) {
     return(parent[s]==EMPTY) ? 0 : -parent[findRoot(s)];
@@ -166,7 +221,7 @@ public class FGClusters {
     return spanningClusterSize;
   }
 
-  // returns S (mean cluster size); sites belonging to spanning cluster not counted in cluster moments
+// returns S (mean cluster size); sites belonging to spanning cluster not counted in cluster moments
   public double getMeanClusterSize() {
     int spanSize = getSpanningClusterSize();
     // subtract sites in spanning cluster
@@ -207,23 +262,7 @@ public class FGClusters {
       return EMPTY;
     }
   }
-/*
-  // fills order[] array with random permutation of site indices. First order[]
-  // is set to the identity permutation. Then for values of i in {1...N-1}, swap
-  // values of order[i] with order[r], where r is a random index in {i+1 ...N}.
-  private void setOccupationOrder() {
-    for(int s = 0;s<N;s++) {
-      order[s] = s;
-    }
-    for(int s = 0;s<N-1;s++) {
-      int r = s+(int) (Math.random()*(N-s));
-      int temp = order[s];
-      order[s] = order[r];
-      order[r] = temp;
-    }
-  }
-*/
-  // utility method to square an integer
+
   private int sqr(int x) {
     return x*x;
   }
