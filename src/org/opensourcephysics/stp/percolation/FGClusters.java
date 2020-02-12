@@ -116,7 +116,7 @@ public class FGClusters {
 			  // to non-root sites with index pointers.
 			  if(parent[s] ==EMPTY) {//to avoid duplicate the counting of existing saturated sites
 				  parent[s] = -1;
-				  numClusters[1]++;
+				  numClusters[1]++;//
 				  numSitesOccupied++;
 				  secondClusterMoment++;  
 			 // merge newSite with occupied neighbors.  root is index of merged cluster root at each step
@@ -135,16 +135,19 @@ public class FGClusters {
 	  }
 		  Ni[s] = grainBoundaries[s].Nt;//update Ni[s] for next step 
 	  }
-	  
-	  
+  }
+  public void updateVenting() {
 	  // search venting cluster from the surface
 	  for(int i=0;i<numSurfaceSites;i++) {
 	  //for(int s = N-L;s<N;s++) {
 		  int s=surfaceSites[i];
 		  if(parent[s]!=EMPTY) {//if the surface site is saturated
 			  int root = parent[s];//the root site of the venting cluster  
-			  if(root>0) {// Case1: the root site of the venting cluster is not on the edge
+			  if(root>=0) {// Case1: the root site of the venting cluster is not on the edge
 					  int clusterSize = -parent[root]; // the size of the venting cluster
+					  if(clusterSize<0) {// if the root site points to another surface site
+						  clusterSize = -parent[-clusterSize];
+					  }
 					  numClusters[clusterSize]--;
 					  //reset the root 
 					  accumulatedFGR += grainBoundaries[root].C_fgr; 
@@ -178,9 +181,9 @@ public class FGClusters {
 					  accumulatedFGR += grainBoundaries[s].C_fgr; 
 					  Ni[s] =  0.0; // update Ni[s] for next step
 					  grainBoundaries[s].venting();
-					  parent[s]=-1;//test
-					  numClusters[1]++;//test
-					  gbState[s] = 1;// GBstate reset to 0 due to venting
+					  parent[s]=EMPTY;//
+					  //numClusters[1]++;//test
+					  gbState[s] = 0;// GBstate reset to 0 due to venting
 					  clusterSize--;
 					  while (clusterSize>0) {// to be tested 
 						  for(int j = 0;j<N;j++) { 
@@ -198,16 +201,19 @@ public class FGClusters {
 					  	}
 					  //parent[s]=-1;// the surface remains vented
 					  }
-				  else// Case3:  only the root site at the down surface is saturated 
+				  else// Case3:root=-1, only the root site at the down surface is saturated 
 				  {
 					  accumulatedFGR += grainBoundaries[s].C_fgr; 
 					  Ni[s] =  0.0; // update Ni[s] for next step
-					  gbState[s] = 1;// GBstate remains vented
+					  grainBoundaries[s].venting();
+					  parent[s]=EMPTY;
+					  gbState[s] = 0;// GBstate remains vented
+					  numClusters[1]--;
 				  }
-			  parent[s]=-1;//test
-			  numClusters[1]++;//test
-			  touchesRght[s] = (s%L==L-1);//
-		      touchesDown[s] = (s/L==M-1);//  
+			  //parent[s]=-1;//test
+			  //numClusters[1]++;//test
+			  //touchesRght[s] = (s%L==L-1);//
+		      //touchesDown[s] = (s/L==M-1);//  
 			  	  }
 		  }
   }

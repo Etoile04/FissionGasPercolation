@@ -44,6 +44,8 @@ public class fgrApp extends AbstractSimulation {
 		        //P_span[i] += (lattice.getSpanningClusterSize()==0 ? 0 : 1);
 		    //  }
 		    displayLattice();//paint the lattice
+		    lattice.updateVenting();//
+		    displayLattice();//paint the lattice
 	  }
 	  
 	  private void displayLattice() {
