@@ -14,7 +14,8 @@ public class FGR {
 	int xGB_max;   // maximum number of the bond network in x axis
 	// why is there no yGB_max?because T is dependent on X position but not Y position
 	int GBstate; // the calculated grain boundary state index- 0, closed;1, satured; 2,overpressurized;
-	double local_t;
+	double t;       // time since irradiation
+	double local_t; //time since last venting, used for Booth flux 
 	double T;      // local temperature of the calculated grain boundary
 	//double beta_g; // local gas production rate, unit: atoms/m^3/s
 	//double Dg;     // gas atom diffusion coefficient, unit: m^2/s
@@ -28,11 +29,15 @@ public class FGR {
 	double Pext = 0.0;  // external applied hydro-static pressure, unit: Pa
 	double gamma = 0.5; // the bubble surface energy, unit: J/m^2
 	double delta = 1.0e-8; //the resolution depth, unit: m
-	double dt = 1000; // time step, unit:second
-	double Ni, Nt; //the previous and current values of Nt
+	double dt; // time step, unit:second
+	double Ni, Nt; //the previous and current values of Nt, unit:atoms/m^2
 	double C_fgr=0.0;// the amount of fission gas released after saturation,unit:mol
+	double C_fgp; // fission gas produced at time t, unit:mol
+	double fgrPercolation=0.0;// fission gas release fraction according to percolation
+	double fgrDiffusion=0.0;  // fission gas release fraction according to diffusion theory
 	final double Navgd=6.022e23;//Avogadro constant
 	final double kB = 1.380649e-23; // Boltzmann constant, unit:J/K
+	final double PI = Math.PI;
 //
 	public double T(int xGB, int xGB_max) {
 		double Tmin = 800; //unit: K
@@ -43,14 +48,22 @@ public class FGR {
 		return T;
 	}
 //
-	public double Dg(double T) {
+	public double Dg(double T) {//Eq.(12) in Ref.1
 		double Dg;
 		if (T>1650)
-			Dg = 1.09e-17*Math.exp(-6614/T);//Eq.(12) in Ref.1
+			Dg = 1.09e-17*Math.exp(-6614/T);
 		else if (T>1381) 
-			Dg = 2.14e-13*Math.exp(-22884/T);//Eq.(12) in Ref.1
+			Dg = 2.14e-13*Math.exp(-22884/T);
 		else 
-			Dg = 1.51e-17*Math.exp(-9508/T);//Eq.(12) in Ref.1
+			Dg = 1.51e-17*Math.exp(-9508/T);
+		return Dg;
+	}
+	public double DTurbull(double T) {//Eq.(12) in Ref.1
+		double D1=7.6e-10*Math.exp(-35000/T);
+		double D2=1.77e-15*Math.exp(-13800/T);
+		double D3=2e-21;
+		double Dg=1/(D1+D2+D3)+1e15;
+		Dg=1.0/Dg;
 		return Dg;
 	}
 //	
@@ -77,16 +90,16 @@ public class FGR {
 		double beta_g = beta_g(T);
 		double Dg=Dg(T);
 		double omega=Dg*t/a/a;
-		double pi_2=1/Math.PI/Math.PI;
+		double pi_2=1/PI/PI;
 		if (omega>pi_2)
-			f0= beta_g*a/3*(1-0.608*Math.exp(-Math.PI*Math.PI*Dg*t/a/a));//Eq.(7) in Ref.1, long times;
+			f0= beta_g*a/3*(1-0.608*Math.exp(-PI*PI*Dg*t/a/a));//Eq.(7) in Ref.1, long times;
 		else
-			f0 = beta_g*a/3*(6/a*Math.sqrt(Dg*t/Math.PI))-3*Dg*t/a/a;//Eq.(6) in Ref.1, short times;
+			f0 = beta_g*a/3*(6/a*Math.sqrt(Dg*t/PI))-3*Dg*t/a/a;//Eq.(6) in Ref.1, short times;
 		return f0;
 	}
 //
 	public double dNdt (double T,double t){
-		//double Agb = 4.0* Math.PI *a*a;//the area of the grain boundary of a particular grain, unit: m^2
+		//double Agb = 4.0* PI *a*a;//the area of the grain boundary of a particular grain, unit: m^2
 		//t is time in previous step,s
 		//T is temperature, K
 		//double f0;//The Booth flux
@@ -123,11 +136,28 @@ public class FGR {
 		return Nt;
 	}
 //
+	public void C_fgp(double dt,double T) {
+		double beta_g = beta_g(T);
+		C_fgp += beta_g*4/3*PI*a*a*a/Navgd*dt;		//update total fission gas produced,unit:mol
+	}
 	public void venting() {
-		C_fgr+=Nt*Math.PI*a*a/Navgd;//gas released amount is accumulated, unit:mol
+		C_fgr+=Nt*4*PI*a*a/Navgd;//gas released amount is accumulated, unit:mol
+		fgrPercolation = C_fgr/C_fgp;//update FGR fraction in the percolation model
 		Nt = 0.0;// gas density is reset to zero after venting
 		GBstate = 0;//grain boundary state is reset to 'closed'
 		local_t = 0.0;// reset the local time following venting
+	}
+	public double fgrFM(double t,double T) {
+		//double omega = DTurbull(T)*t/a/a;
+		double omega = Dg(T)*t/a/a;
+		double fgrFM;
+		if(omega>0.1)
+			fgrFM = 1-0.0662*omega*(1-0.9239*Math.exp(-PI*PI*omega));//Eq.(4) in Ref.1
+		else if(omega>0&&omega<=0.1)
+			fgrFM = 4*Math.sqrt(omega/PI)-1.5*omega; //Eq.(3) in Ref.1
+		else
+			fgrFM = 0.0;
+		return fgrFM;
 	}
 	public FGR(double dt,int xGB,int xGB_max,double Ni ){
 		this.dt = dt;
@@ -137,6 +167,7 @@ public class FGR {
 	    this.theta = Math.toRadians(60+Math.random()*20);//bubble contact angle that is randomly chosen between 40° and 80°
 	    T = this.T(xGB, xGB_max);
 	    this.GBstate = 0;
+	    this.t = 0.0;
 	    this.local_t = 0.0;
 	}
 //	
@@ -144,7 +175,10 @@ public class FGR {
 		this.Ni = Ni;   //Grain boudaries gas density at previous time step		
 //		double deltaN;
 //			deltaN = dNdt(T,t)*dt;
+			t+=dt;
 			local_t+=dt;
+			C_fgp(dt,T);
+			fgrDiffusion=fgrFM(t,T);
 			this.Nt = Nt(T,Ni);// use the local time, which restarts following venting
 		if(this.Nt>=Nsat(T)) 
 			return 1;

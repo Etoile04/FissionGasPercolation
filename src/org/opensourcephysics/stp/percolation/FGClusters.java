@@ -238,7 +238,28 @@ public class FGClusters {
     }
 	return 0;
   }
-
+  public double getFGRP(int x) {
+	  double FGRP=0.0;
+	  int xGB;
+	  if (x<N)
+		  xGB=x%L;
+	  else
+		  xGB=0;//to be modified
+	  for (int i=xGB;i<N;i+=L) {
+		  FGRP+=grainBoundaries[i].fgrPercolation/M;
+	  }
+	  return FGRP;
+  }
+  public double getFGRD(int x) {
+	  double FGRD=0.0;
+	  int xGB;
+	  if (x<N)
+		  xGB=x%L;
+	  else
+		  xGB=0;//to be modified
+	  FGRD=grainBoundaries[xGB].fgrDiffusion;
+	  return FGRD;
+  }
   // given a site index s, returns site index representing the root of cluster to which s belongs.
   private int findRoot(int s) {
     if(parent[s]<0) {
